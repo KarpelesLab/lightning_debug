@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "lightning_debug")(type "KiCad")(uri "${KIPRJMOD}/lightning_debug.kicad_sym")(options "")(descr "Project symbols"))
+)

@@ -1,0 +1,61 @@
+# iCE40UP5K-SG48 pin constraints for the Lightning debug board (nextpnr-ice40 --up5k --package sg48)
+# Generated from tools/gen_schematic.py assignments - keep in sync.
+
+# ---- clock (12 MHz oscillator X1, bank 1, global G3) ----
+set_io clk12        20
+
+# ---- FT2232H channel B (bank 1, 3.3V) : UART or MPSSE ----
+set_io ft_txd       9    # FT -> FPGA (UART RX / MPSSE SCK)
+set_io ft_rxd       10   # FPGA -> FT (UART TX)
+set_io ft_rts_n     11   # FT -> FPGA
+set_io ft_cts_n     12   # FPGA -> FT
+
+# ---- config SPI flash (shared with FT2232H ch.A / iceprog) ----
+set_io flash_mosi   14
+set_io flash_sck    15
+set_io flash_cs_n   16
+set_io flash_miso   17
+
+# ---- L0 lane muxes (FSUSB42): SEL=0 -> FPGA, SEL=1 -> USB-C #2; OE_n=1 -> disconnected ----
+set_io muxa_sel     13
+set_io muxa_oe_n    18
+set_io muxb_sel     19
+set_io muxb_oe_n    21
+
+# ---- Lightning PWR load switch (TPS2065C, active high, 1A) ----
+set_io pwr_en       6
+
+# ---- Lightning lanes (bank 0, VCCIO0 = 3.3V default / 1.8V via JP2) ----
+set_io l0a_p        23   # side A L0+ (through mux A HSD1)
+set_io l0a_n        25
+set_io l0b_p        26   # side B L0+ (through mux B HSD1)
+set_io l0b_n        27
+set_io l1a_p        28   # side A L1+ (direct, 33R)
+set_io l1a_n        31
+set_io l1b_p        32
+set_io l1b_n        34
+
+# ---- spare I/O on J5 ----
+set_io exp0         35   # bank 0, G0
+set_io exp1         36
+set_io exp2         37   # bank 0, G1
+set_io exp3         38
+set_io exp4         42
+set_io exp5         43
+set_io exp6         44   # bank 2 (1.8V), G6
+
+# ---- Lightning ID lines (bank 2, 1.8V) ----
+set_io a_id0        45
+set_io a_id1        46
+set_io b_id0        47
+set_io b_id1        48
+
+# ---- misc (bank 2, 1.8V) ----
+set_io btn_n        2    # user button, active low (10k pull-up)
+set_io pwr_flt_n    3    # TPS2065C fault, open drain (10k pull-up to 1.8V)
+set_io vbus2_det    4    # USB-C #2 VBUS present (10k/4.7k divider)
+
+# ---- RGB LED sinks (use SB_RGBA_DRV) ----
+set_io led_r        39
+set_io led_g        40
+set_io led_b        41
