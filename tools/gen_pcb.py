@@ -13,7 +13,8 @@ import pcbnew
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJ = os.path.abspath(os.path.join(HERE, ".."))
-OUT = os.path.join(PROJ, "lightning_debug.kicad_pcb")
+OUT = os.environ.get("PCB_OUT") or os.path.join(PROJ, "lightning_debug.kicad_pcb")
+MARGIN = float(os.environ.get("PCB_MARGIN", "0.35"))   # min gap between auto-placed passives (mm)
 FPDIRS = {"lightning_debug": os.path.join(PROJ, "lightning_debug.pretty")}
 SYSFP = "/usr/share/kicad/footprints"
 
@@ -44,7 +45,7 @@ FIXED = {
     "U12": (104.5, 110.0, 0),      # load switch
     "JP1": (104.5, 116.0, 0),
     # FPGA rotated: lanes (pins 25-36) face the connectors, UART (9-12) faces the FT2232H
-    "U7": (150.0, 118.0, 180),
+    "U7": tuple(float(v) for v in os.environ["PCB_U7"].split(",")) + (180,) if os.environ.get("PCB_U7") else (150.0, 118.0, 180),
     "U8": (151.5, 106.5, 0),       # flash, above the FPGA config pins (14-17)
     "X1": (143.0, 108.5, 0),       # 12MHz osc, near CLK pin 20
     "JP2": (139.0, 104.5, 0),
@@ -262,7 +263,7 @@ def main(netfile):
                     fp.SetOrientationDegrees(rot)
                     fp.SetPosition(V(x, y))
                     b = bbox(fp)
-                    if free(b, 0.35):
+                    if free(b, MARGIN):
                         occupied.append(b)
                         placed = True
                         break
@@ -347,7 +348,8 @@ def main(netfile):
 def set_rules():
     """(Re)apply net classes + rules to the .kicad_pro (pcbnew's Save() resets them)."""
     import json
-    pro = os.path.join(PROJ, "lightning_debug.kicad_pro")
+    board = os.environ.get("PCB_OUT") or os.environ.get("PCB_FILE") or os.path.join(PROJ, "lightning_debug.kicad_pcb")
+    pro = os.path.splitext(board)[0] + ".kicad_pro"
     d = json.load(open(pro))
     classes = d.setdefault("net_settings", {}).setdefault("classes", [])
     base = dict(classes[0]) if classes else {}

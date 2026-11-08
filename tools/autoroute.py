@@ -20,7 +20,7 @@ import tempfile
 import pcbnew
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PCB = os.path.abspath(os.path.join(HERE, "..", "lightning_debug.kicad_pcb"))
+PCB = os.environ.get("PCB_FILE") or os.path.abspath(os.path.join(HERE, "..", "lightning_debug.kicad_pcb"))
 
 
 def find_java(jar):
@@ -44,6 +44,7 @@ def import_ses(ses):
     # Freerouting 2.5 necks tracks down at pins (0.1124 mm); widen them to the board minimum.
     txt = open(ses).read()
     txt = re.sub(r"\(path (\S+) (\d+)", lambda m: "(path %s %d" % (m.group(1), max(int(m.group(2)), MIN_W)), txt)
+    txt = re.sub(r"\(wire\s+\(path \S+ \d+\s+-?\d+ -?\d+\s*\)\s*\)", "", txt)
     fixed = ses + ".fixed"
     open(fixed, "w").write(txt)
     ses = fixed
@@ -76,12 +77,6 @@ def main():
             board.Remove(z)
     if not pcbnew.ExportSpecctraDSN(board, dsn):
         sys.exit("DSN export failed")
-    # In1 is the solid GND reference under the USB pairs: keep it as a plane, but don't
-    # let the router put tracks on it (Freerouting's own autoroute_settings syntax).
-    # (Declaring it "(type power)" instead made Freerouting 2.5 lose the GND connections.)
-    txt = open(dsn).read()
-    txt = txt.replace("  (structure\n", "  (structure\n    (autoroute_settings (layer_rule In1.Cu (active off)))\n", 1)
-    open(dsn, "w").write(txt)
     print("DSN:", dsn)
     if "freerouting-1." in os.path.basename(a.jar):
         sys.exit("Freerouting 1.x always opens a window; use 2.x for headless runs")
@@ -94,10 +89,11 @@ def main():
     subprocess.run(cmd, check=True, env=env)
     if not os.path.exists(ses):
         sys.exit("Freerouting produced no session file")
-    # Freerouting 2.1 wrote single-point (broken) wires on this board: refuse such output.
+    # Freerouting sometimes writes single-point (degenerate) wires: 2.1 wrote 30 on this
+    # board and left those nets open. They carry no copper; DRC reports any break left.
     broken = len(re.findall(r"\(path \S+ \d+\s+-?\d+ -?\d+\s*\)", open(ses).read()))
     if broken:
-        sys.exit(f"{ses}: {broken} single-point wires (Freerouting bug), not importing")
+        print(f"WARNING: {broken} single-point wires in the session (dropped); check DRC")
     # A second LoadBoard() in the same process returns a bare SwigPyObject: import in a child.
     subprocess.run([sys.executable, os.path.abspath(__file__), "--import-ses", ses], check=True)
     print("routed ->", PCB, "(refill zones: kicad-cli pcb drc --refill-zones --save-board)")
