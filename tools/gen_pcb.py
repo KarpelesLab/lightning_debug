@@ -44,8 +44,9 @@ FIXED = {
     "U10": (128.5, 117.5, 180),    # mux side A
     "U12": (104.5, 110.0, 0),      # load switch
     "JP1": (104.5, 116.0, 0),
-    # FPGA rotated: lanes (pins 25-36) face the connectors, UART (9-12) faces the FT2232H
-    "U7": tuple(float(v) for v in os.environ["PCB_U7"].split(",")) + (180,) if os.environ.get("PCB_U7") else (150.0, 118.0, 180),
+    # FPGA rotated 90 deg: best of the routed placement variants
+    # PCB_U7="x,y[,rot]" overrides (placement experiments)
+    "U7": (tuple(float(v) for v in os.environ["PCB_U7"].split(",")) + (180.0,))[:3] if os.environ.get("PCB_U7") else (150.0, 118.0, 90),
     "U8": (151.5, 106.5, 0),       # flash, above the FPGA config pins (14-17)
     "X1": (143.0, 108.5, 0),       # 12MHz osc, near CLK pin 20
     "JP2": (139.0, 104.5, 0),
@@ -316,7 +317,7 @@ def main(netfile):
         board.Add(tx)
 
     text("PHONE", 123.0, 103.0, 0.8)
-    text("DEBUG", BX1 - 9.5, 127.0, 0.8, rot=90)
+    text("DEBUG", BX1 - 3.65, 120.6, 0.8)
     text("LIGHTNING DEBUG v0.1", 160.0, BY1 - 1.2, 0.8)
 
     # ---------------- zones ----------------
@@ -356,7 +357,7 @@ def set_rules():
 
     def cls(name, prio, **kw):
         c = dict(base)
-        c.update(name=name, priority=prio, clearance=0.15, track_width=0.15, via_diameter=0.5,
+        c.update(name=name, priority=prio, clearance=0.127, track_width=0.15, via_diameter=0.5,
                  via_drill=0.3, diff_pair_width=0.2, diff_pair_gap=0.2)
         c.update(kw)
         return c
@@ -372,7 +373,7 @@ def set_rules():
         {"netclass": "Power", "pattern": p} for p in ("/VBUS1", "/VBUS2", "/+5V", "/LS_IN", "/LTG_PWR")
     ] + [{"netclass": "USB_HS", "pattern": p} for p in ("/USB*_D?", "/?_L0?", "/L0?_?_M")]
     r = d.setdefault("board", {}).setdefault("design_settings", {}).setdefault("rules", {})
-    r.update(min_clearance=0.15, min_track_width=0.15, min_copper_edge_clearance=0.4,
+    r.update(min_clearance=0.127, min_track_width=0.15, min_copper_edge_clearance=0.4,
              min_text_height=0.8, min_via_diameter=0.45, min_through_hole_diameter=0.3)
     json.dump(d, open(pro, "w"), indent=2)
 

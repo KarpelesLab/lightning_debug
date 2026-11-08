@@ -1,18 +1,32 @@
 # Lightning debug board
 
-A carrier board for an eLabGuy Lightning male breakout. Use it to talk to (early)
-iPhones from Linux: an FPGA reaches every Lightning signal pin, one USB-C port
-programs the FPGA and streams logs, and a second USB-C port passes the phone's
-USB through to a host.
+A carrier board for an eLabGuy Lightning **male** breakout, for poking at (early)
+iPhones from Linux. Plug a phone into the breakout and you get:
 
-KiCad 10 project: `lightning_debug.kicad_pro`.
+- **An FPGA on every Lightning signal pin.** All 12 data/ID contacts (both sides
+  of the plug) go to an iCE40UP5K. It can sniff, emulate an accessory/cable chip
+  (ID0/ID1), or drive a UART on the data lanes and stream it to the host.
+- **USB-C #1 (DEBUG)** to the host. An FT2232H programs the FPGA's flash
+  (`iceprog`) and gives a second channel (UART up to 12 Mbaud, or 30 MHz MPSSE)
+  for log streaming. This port also powers the board.
+- **USB-C #2 (PHONE)** for the phone's own USB. Analog switches connect the
+  phone's USB lane straight through to a second host at full 480 Mb/s, or hand
+  the lane to the FPGA instead. The FPGA also switches the phone's power (VBUS
+  from this port, current-limited to 1 A).
+
+KiCad 10 project: `lightning_debug.kicad_pro`. Board status: **routed, DRC
+clean, fab files in `fab/release/`** (see [Status](#status) for what to check
+before ordering).
 
 ![3D render, isometric](renders/iso.png)
 
-![3D render, top](renders/top.png)
+| Top | Bottom |
+|-----|--------|
+| ![top](renders/top.png) | ![bottom](renders/bottom.png) |
 
-*Placement only, not routed yet. KiCad's stock libraries have no 3D models for
-the HRO USB-C receptacles or the ASE oscillator, so those show only their pads.*
+*KiCad's stock libraries have no 3D models for the HRO USB-C receptacles or the
+ASE oscillator, so those show only their pads. The breakout itself (J3/J4) is
+drawn as its outline.*
 
 ## Architecture
 
@@ -26,19 +40,20 @@ the HRO USB-C receptacles or the ASE oscillator, so those show only their pads.*
                                 │ (other mux port = FPGA)
                 VBUS2 ─► TPS2065C (FPGA PWR_EN, 1A) ─► Lightning PWR (pins 5/12)
 
- iCE40 bank 0 (VCCIO0, JP2: 3.3V default / 1.8V): L0 A/B (via the muxes), L1 A/B, EXP0-5
+ iCE40 bank 0 (VCCIO0, JP2: 3.3V default / 1.8V): L0 A/B (via the muxes), L1 A/B, EXP0-3, EXP5
  iCE40 bank 2 (1.8V):                             ID0/ID1 A/B, button, PWR fault, VBUS2 detect, EXP6
  iCE40 bank 1 (3.3V):                             SPI flash, 12 MHz clock, FT2232H ch.B, mux/power control
 ```
 
-- **Both sides of the plug go to the FPGA.** That's 12 signal lines. Gateware
-  handles orientation. GND (pins 1/16) and PWR (pins 5/12) are hard-wired.
-- **Lightning pin map** (same on both breakouts). Side A: 1 GND, 2 L0p, 3 L0n,
-  4 ID0, 5 PWR, 6 L1n, 7 L1p, 8 ID1. Side B is mirrored, so pin 17‑k carries
-  the same signal as pin k (16 GND, 15 L0p, 14 L0n, 13 ID0, 12 PWR, 11 L1n,
-  10 L1p, 9 ID1).
-- **USB passthrough** keeps the full 480 Mb/s because it goes through analog
-  muxes, not the FPGA. Each mux works like this:
+- **Both sides of the plug go to the FPGA,** so gateware handles orientation.
+  GND (pins 1/16) and PWR (pins 5/12) are hard-wired.
+- **Lightning pin map** (same on both breakouts):
+  - Side A: 1 GND, 2 L0p, 3 L0n, 4 ID0, 5 PWR, 6 L1n, 7 L1p, 8 ID1.
+  - Side B is mirrored: pin 17‑k carries the same signal as pin k (16 GND, 15 L0p, 14 L0n, 13 ID0, 12 PWR, 11 L1n, 10 L1p, 9 ID1).
+- **Logic levels.** ID0/ID1 are 1.8 V (bank 2). The lanes' level isn't
+  documented, so bank 0 is jumper-selectable: 3.3 V by default, 1.8 V via JP2.
+- **USB passthrough** goes through analog muxes, not the FPGA, so it keeps
+  480 Mb/s. Each mux works like this:
 
   | OE#  | SEL | Lightning L0 connected to |
   |------|-----|---------------------------|
@@ -48,10 +63,14 @@ the HRO USB-C receptacles or the ASE oscillator, so those show only their pads.*
 
   Enable at most one mux toward USB-C #2 at a time: the side the phone is touching.
 - **Phone power** comes from USB-C #2 VBUS through the load switch. It is off
-  by default (100k pull-down on PWR_EN). Close JP1 on 2‑3 instead of 1‑2 to
+  by default (100k pull-down on PWR_EN). Bridge JP1 on 2‑3 instead of 1‑2 to
   power the phone from port 1.
-- Series 33Ω resistors sit on every FPGA ↔ Lightning line. Pull-ups on the ID
-  lines are footprinted but not fitted.
+- **33 Ω series resistors** sit on every FPGA ↔ Lightning line. Pull-ups on the
+  ID lines are footprinted but not fitted.
+- **User I/O:** button SW1, RGB LED (FPGA's constant-current sinks, `SB_RGBA_DRV`),
+  and the 10-pin header J5. J5 pinout: 1 GND, 2 VCCIO0, 3–6 EXP0–3, 7 GND,
+  8 EXP5, 9 EXP6, 10 +1V8. EXP4 was dropped: FPGA pin 42 could not be routed out
+  past its neighbours, so it is left unconnected and J5 pin 7 is an extra GND.
 
 ### Solder jumpers
 
@@ -61,6 +80,8 @@ the HRO USB-C receptacles or the ASE oscillator, so those show only their pads.*
 | JP2 | bank 0 (lanes) at 3.3V | bank 0 at 1.8V |
 
 ## Breakout install points (fit only ONE)
+
+The two eLabGuy breakouts have mirrored pinouts, so each has its own footprint:
 
 - **J3: APPLE-LM-BO-V1AV** (vertical plug). Top row is pins 1→8, bottom row 9→16.
 - **J4: APPLE-LM-BO-V2A** (horizontal plug). Top row is 9→16, bottom row is
@@ -80,23 +101,40 @@ the breakouts' own holes, for standoffs.
 - Logs: channel B shows up as `/dev/ttyUSB1`. UART runs up to 12 Mbaud, with
   RTS/CTS on BDBUS2/3. For more bandwidth, put channel B in MPSSE mode (SPI-like,
   30 MHz) on the same 4 pins.
-- Pin constraints for nextpnr: `gateware/lightning_debug.pcf`.
+- Pin constraints for nextpnr: `gateware/lightning_debug.pcf`. There's no
+  gateware yet.
 
-## Status / TODO
+## PCB
+
+- 80 × 50 mm, 4 layers, 1.6 mm:
+  - **F.Cu:** signals.
+  - **In1:** solid GND plane, the reference for the USB pairs. Only two short low-speed runs (EXP6, L1A_N_F) use it, kept 1 mm away from the USB nets.
+  - **In2:** +3V3 pour plus signals.
+  - **B.Cu:** signals plus GND pour.
+- **Rules:** 0.15 mm track, 0.127 mm (5 mil) clearance, 0.5/0.3 mm vias. Power
+  nets use 0.5 mm tracks and the USB/L0 nets 0.28 mm. All of this is inside
+  JLCPCB's and PCBWay's standard 4-layer process.
+- **Thermal and GND vias:** GND vias in the FPGA and FT2232H thermal pads, and
+  GND stitching vias across the board.
+
+## Status
 
 - [x] Schematic: ERC clean (0 errors, 0 warnings).
-- [x] PCB: 80×50 mm, 4 layers (In1 GND, In2 +3V3, B.Cu GND pour). Parts are
-      placed and the board matches the schematic, but **nothing is routed yet**.
-- [ ] Route. Do USB1/USB2 D± and the L0 lanes first as 90Ω differential pairs.
-      Get trace width and gap from your fab's impedance calculator for the real
-      stackup (the `USB_HS` netclass is a placeholder). Keep the L0 stubs to
-      J3/J4 short.
-- [ ] Clean up silkscreen and tidy placement.
-- [x] Checked: the iCE40 VCCPLL RC filter (100Ω + 10µ + 100n) is the
-      datasheet's recommendation ("RC-based noise filter", TN1252). The RGB
-      sink pins are rated 0–3.5 V regardless of VCCIO (unlike normal I/O,
-      VCCIO+0.2 V), so 3.3 V LED anodes are fine with bank 0 at 1.8 V.
-      VPP_2V5 is at 3.3 V, which the RGB driver and HFOSC require (≥ 2.3 V).
+- [x] PCB: placed, routed, DRC clean. That means 0 errors, 0 unconnected, and
+      the board matches the schematic. The 4 remaining warnings come from the
+      stock USB-C footprints' own silkscreen touching the board edge.
+- [x] Checked against the datasheets:
+  - The iCE40 VCCPLL RC filter (100 Ω + 10 µF + 100 nF) is the recommended "RC-based noise filter" (TN1252).
+  - The RGB sink pins are rated 0–3.5 V regardless of VCCIO, so 3.3 V LED anodes are fine with bank 0 at 1.8 V.
+  - VPP_2V5 is on 3.3 V, which the RGB driver and HFOSC need (≥ 2.3 V).
+- [ ] **Review the autorouted USB pairs before ordering.** USB1/USB2 D± and the
+      L0 lanes were autorouted as individual 0.28 mm tracks over the In1 GND
+      plane, not as coupled, length-matched 90 Ω pairs. The runs are short (a few
+      cm), so 480 Mb/s should work, but a hand re-route as real differential
+      pairs is the safe option. Set the `USB_HS` width and gap from your fab's
+      impedance calculator first. 0.28/0.2 mm is an estimate for JLC04161H-7628.
+- [ ] Verify one breakout footprint 1:1 against the real part (see above).
+- [ ] Fill in the LCSC part numbers in `tools/parts.csv` (see Ordering).
 
 ## Ordering (JLCPCB / PCBWay)
 
@@ -105,7 +143,7 @@ python3 tools/export_fab.py            # refuses while the board has unrouted ne
 python3 tools/export_fab.py --preview  # dry run -> fab/UNROUTED-PREVIEW/ (DO NOT ORDER)
 ```
 
-When the board is routed and DRC is clean, the script writes `fab/release/`:
+The script runs DRC first, then writes `fab/release/` (committed in this repo):
 
 | File | JLCPCB | PCBWay |
 |------|--------|--------|
@@ -116,16 +154,16 @@ When the board is routed and DRC is clean, the script writes `fab/release/`:
 
 PCB options to select:
 - 4 layers, 1.6 mm thick, 80 × 50 mm, FR-4, 1 oz outer copper.
-- Min track/space 0.15 mm, min via 0.3/0.6 mm. These fit both fabs' standard 4-layer process.
+- Min track/space 0.15/0.127 mm, min via 0.3/0.5 mm.
 - Impedance control on, for the USB pairs. Choose the fab's stackup (for
-  JLCPCB, e.g. JLC04161H-7628), then set the `USB_HS` netclass to the width and
-  gap their calculator gives for 90 Ω differential **before routing**.
+  JLCPCB, e.g. JLC04161H-7628).
 - Assembly on the top side only. Every SMD part is on top.
 
 Before you pay:
-- **Part numbers.** Fill `tools/parts.csv`. JLCPCB uses the `lcsc` column;
-  PCBWay uses `manufacturer`/`mpn`. Only FSUSB42MUX → C11355 has been
-  verified. Rows without a number have to be matched by hand in the fab's BOM tool.
+- **Part numbers.** Fill `tools/parts.csv`, then re-run the export. JLCPCB uses
+  the `lcsc` column; PCBWay uses `manufacturer`/`mpn`. Only FSUSB42MUX → C11355
+  has been verified. Rows without a number have to be matched by hand in the
+  fab's BOM tool.
 - **Rotation.** Check part rotation in the fab's placement preview, especially
   for the QFNs, SOT-23s, SOICs and USB-C connectors. KiCad's zero orientation
   and JLCPCB/PCBWay's don't always agree, and both let you fix it in their viewer.
@@ -134,20 +172,37 @@ Before you pay:
 
 ## Regenerating
 
-The KiCad files were bootstrapped by scripts in `tools/`. You can edit the
-schematic and PCB in KiCad directly. If you'd rather keep everything in the
-scripts:
+The KiCad files were bootstrapped by the scripts in `tools/`. You can edit the
+schematic and PCB in KiCad directly. To redo everything from the scripts:
 
 ```
 python3 tools/gen_symlib.py && python3 tools/gen_footprints.py
 python3 tools/gen_schematic.py && kicad-cli sch upgrade lightning_debug.kicad_sch
 kicad-cli sch export netlist --format kicadxml -o /tmp/net.xml lightning_debug.kicad_sch
-python3 tools/gen_pcb.py /tmp/net.xml        # WARNING: overwrites the PCB (placement/routing)
+python3 tools/gen_pcb.py /tmp/net.xml        # WARNING: overwrites the PCB (placement, no tracks)
+python3 tools/autoroute.py                   # Freerouting, headless
+python3 tools/finish_route.py                # rip-up/re-route what is left, GND stitching
+python3 tools/silk.py                        # place reference designators
 ```
+
+- `autoroute.py` runs [Freerouting](https://github.com/freerouting/freerouting) 2.x
+  **headless** (`--gui.enabled=false`, no `DISPLAY`, `java.awt.headless`). It uses
+  the newest `~/.local/share/freerouting/freerouting-2.*.jar` and a Java 25
+  runtime for 2.5+ (or set `FREEROUTING_JAR` / `FREEROUTING_JAVA`).
+- `finish_route.py` is a small grid A* router built on KiCad's own geometry. It:
+  - takes the autorouter's open connections from KiCad's DRC report;
+  - keeps In1 free of tracks;
+  - rips up neighbours only when plain routing makes no progress.
+- The autorouter results depend on placement. The committed board comes from
+  several placement variants (`PCB_U7`/`PCB_MARGIN` knobs in `gen_pcb.py`). The
+  one routed and committed had the FPGA rotated 90°. Even then, the last
+  connection (EXP4) was dropped by hand, so a fresh run won't necessarily come
+  out clean.
 
 Refresh the 3D renders:
 
 ```
 kicad-cli pcb render -o renders/top.png --side top --quality high --background opaque -w 1600 -h 1000 --zoom 1.1 lightning_debug.kicad_pcb
+kicad-cli pcb render -o renders/bottom.png --side bottom --quality high --background opaque -w 1600 -h 1000 --zoom 1.1 lightning_debug.kicad_pcb
 kicad-cli pcb render -o renders/iso.png --quality high --background opaque --perspective --rotate '-50,0,-30' -w 1600 -h 1000 --zoom 0.9 lightning_debug.kicad_pcb
 ```

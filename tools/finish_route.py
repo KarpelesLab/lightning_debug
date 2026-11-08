@@ -30,7 +30,7 @@ sys.path.insert(0, HERE)
 
 RES = 0.05                      # grid (mm)
 GRID_MARGIN = 0.04              # covers grid discretisation
-CLEAR = 0.15                    # copper clearance (net class)
+CLEAR = 0.127                   # copper clearance (net class: 5 mil, JLCPCB/PCBWay standard 4-layer)
 EDGE = 0.4                      # copper to board edge
 HOLE_CLEAR = 0.25               # copper to other-net hole
 VIA_D, VIA_DRILL = 0.5, 0.3
@@ -145,12 +145,14 @@ def layers_of(item):
     return [item.GetLayer()]
 
 
-def obstacle_maps(board, grid, netname, width, exclude=frozenset()):
+def obstacle_maps(board, grid, netname, width, exclude=frozenset(), split=False):
     """blocked[layer] for track centrelines of `width` on outer layers; via_blocked for vias."""
     tr_inf = width / 2 + CLEAR + GRID_MARGIN
     via_inf = VIA_D / 2 + CLEAR + GRID_MARGIN
     polys = {l: [] for l in ROUTE}
     vpolys = []
+    spolys = {l: [] for l in ROUTE}
+    svpolys = []
     for it in copper_items(board):
         if exclude and it.m_Uuid.AsString() in exclude:
             continue
@@ -163,11 +165,13 @@ def obstacle_maps(board, grid, netname, width, exclude=frozenset()):
             continue
         if same:
             continue
+        soft = split and not isinstance(it, pcbnew.PAD)
+        P, VP = (spolys, svpolys) if soft else (polys, vpolys)
         for l in layers_of(it):
             if l in ROUTE:
-                polys[l].append(item_poly(it, l, tr_inf))
+                P[l].append(item_poly(it, l, tr_inf))
             if not (l in INNER + (pcbnew.In2_Cu,) and isinstance(it, pcbnew.PAD) and it.GetAttribute() == pcbnew.PAD_ATTRIB_SMD):
-                vpolys.append(item_poly(it, l, via_inf))
+                VP.append(item_poly(it, l, via_inf))
         # other-net drilled holes: hole clearance for new vias
         drill = 0
         if isinstance(it, pcbnew.PCB_VIA):
@@ -175,7 +179,7 @@ def obstacle_maps(board, grid, netname, width, exclude=frozenset()):
         elif isinstance(it, pcbnew.PAD) and it.GetAttribute() == pcbnew.PAD_ATTRIB_PTH:
             drill = TOMM(it.GetDrillSize().x)
         if drill:
-            vpolys.append(hole_poly(it.GetPosition(), drill, VIA_DRILL / 2 + HOLE_CLEAR + GRID_MARGIN))
+            VP.append(hole_poly(it.GetPosition(), drill, VIA_DRILL / 2 + HOLE_CLEAR + GRID_MARGIN))
     if pcbnew.In1_Cu in ROUTE:
         # In1 fallback: stay 1 mm away from anything on the high-speed USB / L0 nets
         for it in copper_items(board):
@@ -193,6 +197,8 @@ def obstacle_maps(board, grid, netname, width, exclude=frozenset()):
         b[-m:, :] = True
         b[:, :m] = True
         b[:, -m:] = True
+    if split:
+        return blocked, vb, {l: grid.raster(spolys[l]) for l in ROUTE}, grid.raster(svpolys)
     return blocked, vb
 
 
@@ -206,7 +212,7 @@ def cluster_cells(board, grid, items):
     return {l: grid.raster(cells[l]) for l in ROUTE}
 
 
-def astar(grid, blocked, vb, start, goal, via_cost=30):
+def astar(grid, blocked, vb, start, goal, via_cost=30, soft=None, vsoft=None, penalty=60):
     L = ROUTE
     INF = float("inf")
     anyg = np.zeros_like(goal[L[0]])
@@ -250,11 +256,14 @@ def astar(grid, blocked, vb, start, goal, via_cost=30):
         for di, dj, c in dirs:
             a, b = i + di, j + dj
             if 0 <= a < grid.nx and 0 <= b < grid.ny and (not blocked[L[li]][b, a] or goal[L[li]][b, a] or start[L[li]][b, a]):
+                if soft is not None and soft[L[li]][b, a] and not goal[L[li]][b, a]:
+                    c += penalty
                 nbrs.append(((li, a, b), c))
         if not vb[j, i]:
             for lo in range(len(L)):
                 if lo != li:
-                    nbrs.append(((lo, i, j), via_cost + {pcbnew.In2_Cu: 10, pcbnew.In1_Cu: 200}.get(L[lo], 0)))
+                    nbrs.append(((lo, i, j), via_cost + {pcbnew.In2_Cu: 10, pcbnew.In1_Cu: 200}.get(L[lo], 0)
+                                 + (penalty * 3 if vsoft is not None and vsoft[j, i] else 0)))
         for m, c in nbrs:
             ng = gc + c
             if ng < g.get(m, INF):
@@ -365,6 +374,37 @@ def connected_cluster(board, item):
     return list(cl.values())
 
 
+def to_plane(board, grid, item):
+    """Connect item's copper island to its plane (GND: In1, +3V3: In2) with a short track + via."""
+    name = item.GetNetname()
+    plane = pcbnew.In1_Cu if name == "/GND" else pcbnew.In2_Cu
+    fill = []
+    for z in board.Zones():
+        if z.GetNetname() == name and z.GetLayer() == plane:
+            ps = pcbnew.SHAPE_POLY_SET(z.GetFilledPolysList(plane))
+            ps.Deflate(MM(VIA_D / 2 + 0.1), pcbnew.CORNER_STRATEGY_ROUND_ALL_CORNERS, MM(0.01))
+            fill.append(ps)
+    fillmap = grid.raster(fill)
+    width = 0.3 if name == "/GND" else 0.25
+    blocked, vb = obstacle_maps(board, grid, name, width)
+    ok = fillmap & ~vb
+    goal = {l: ok for l in OUTER}
+    start = cluster_cells(board, grid, connected_cluster(board, item))
+    path = astar(grid, blocked, vb, start, goal)
+    if not path:
+        return False
+    if len(path) > 1:
+        emit(board, grid, path, item.GetNet(), width, OUTER)
+    v = pcbnew.PCB_VIA(board)
+    x, y = grid.xy(path[-1][1], path[-1][2])
+    v.SetPosition(pcbnew.VECTOR2I(MM(x), MM(y)))
+    v.SetWidth(MM(VIA_D))
+    v.SetDrill(MM(VIA_DRILL))
+    v.SetNet(item.GetNet())
+    board.Add(v)
+    return True
+
+
 def fix_vias(board):
     n = 0
     for t in board.GetTracks():
@@ -415,6 +455,7 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     pcb = os.path.abspath(args[0]) if args else os.path.join(HERE, "..", "lightning_debug.kicad_pcb")
     rounds = 30
+    rip = float(sys.argv[sys.argv.index("--rip") + 1]) if "--rip" in sys.argv else 0.6
     if "--rounds" in sys.argv:
         rounds = int(sys.argv[sys.argv.index("--rounds") + 1])
     os.environ.setdefault("PCB_FILE", pcb)
@@ -424,26 +465,29 @@ def main():
     grid = Grid(board)
     # In1 tracks cut the GND reference plane: rip them up, they get re-routed elsewhere
     # (run this script on a fresh autorouter result: it also rips its own In1 fallback tracks)
-    inner = [t for t in board.GetTracks() if t.GetLayer() in INNER and not isinstance(t, pcbnew.PCB_VIA)]
-    for t in inner:
-        board.Remove(t)
-    KEEP.extend(inner)
-    print(f"ripped {len(inner)} inner-layer track segments; resized {fix_vias(board)} vias; "
-          f"added {stitch(board, grid)} GND stitching vias")
-    board.Save(pcb)
-    set_rules()
+    if "--resume" not in sys.argv:
+        inner = [t for t in board.GetTracks() if t.GetLayer() in INNER and not isinstance(t, pcbnew.PCB_VIA)]
+        for t in inner:
+            board.Remove(t)
+        KEEP.extend(inner)
+        print(f"ripped {len(inner)} inner-layer track segments; resized {fix_vias(board)} vias; "
+              f"added {stitch(board, grid)} GND stitching vias")
+        board.Save(pcb)
+        set_rules()
 
     last = None
     ripped_any = False
+    allow_rip = False
     for rnd in range(rounds):
         items = drc(pcb)
         board = pcbnew.LoadBoard(pcb)
-        errs = [(k, l) for k, l, s in items if s == "error" and not k.startswith("silk")]
+        errs = [(k, l) for k, l, s in items if (s == "error" or k in ("via_dangling", "track_dangling"))
+                and not k.startswith("silk")]
         summary = {}
         for k, _ in errs:
             summary[k] = summary.get(k, 0) + 1
         print(f"round {rnd}: {summary or 'clean'}")
-        if not errs or (summary == last and not ripped_any):
+        if not errs or (summary == last and not ripped_any and not allow_rip):
             break
         ripped_any = False
         last = summary
@@ -480,10 +524,24 @@ def main():
                 continue
             (xa, ya, da), (xb, yb, db) = locs
             a, b = find_item(board, xa, ya, da), find_item(board, xb, yb, db)
-            if da.startswith("Zone") or a is None or b is None:
+            if db.startswith("Zone") and a is not None and a.GetNetname() in PLANE_NETS:
+                b = None
+            elif da.startswith("Zone") and b is not None and b.GetNetname() in PLANE_NETS:
+                a, b = b, None
+            if a is None:
+                continue
+            name = a.GetNetname()
+            if name in PLANE_NETS:
+                if to_plane(board, grid, a):
+                    routed += 1
+                    print(f"  {name}: connected to its plane")
+                else:
+                    failed += 1
+                    print(f"  could not reach the plane: {name} {da}")
+                continue
+            if b is None:
                 continue
             net = a.GetNet()
-            name = a.GetNetname()
             ca, cb = connected_cluster(board, a), connected_cluster(board, b)
             if set(map(id, ca)) & set(map(id, cb)):
                 continue
@@ -506,12 +564,12 @@ def main():
                 path = None
             ROUTE = OUTER
             ripped_up = False
-            if path is None and rnd < rounds - 2:
-                # rip-up: free the blocked endpoint(s) by removing other nets' tracks
+            if path is None and allow_rip and rnd < rounds - 2:
+                # rip-up (only after a round where plain routing made no progress): free the blocked endpoint(s) by removing other nets' tracks
                 # around them, route this connection, re-route the victims next round
                 victims = {}
                 for it in (a, b):
-                    zone = item_poly(it, pcbnew.F_Cu if it.IsOnLayer(pcbnew.F_Cu) else pcbnew.B_Cu, 0.6)
+                    zone = item_poly(it, pcbnew.F_Cu if it.IsOnLayer(pcbnew.F_Cu) else pcbnew.B_Cu, rip)
                     for t in board.GetTracks():
                         if t.GetNetname() == name or t.GetNetname() in PLANE_NETS or t.GetLayer() == pcbnew.In1_Cu:
                             continue
@@ -520,6 +578,12 @@ def main():
                             inter.BooleanIntersection(item_poly(t, pcbnew.F_Cu, 0))
                             if inter.OutlineCount():
                                 victims[t.m_Uuid.AsString()] = t
+                # take the victim nets' whole routes, not just the local pieces (the rest of
+                # a neighbour's track usually keeps walling in the corridor)
+                vnets = {t.GetNetname() for t in victims.values()}
+                for t in board.GetTracks():
+                    if t.GetNetname() in vnets:
+                        victims[t.m_Uuid.AsString()] = t
                 blocked, vb = obstacle_maps(board, grid, name, width, frozenset(victims))
                 path = astar(grid, blocked, vb, start, goal)
                 if path:
@@ -527,6 +591,40 @@ def main():
                         board.Remove(t)
                     KEEP.extend(victims.values())   # never let SWIG free removed items
                     print(f"  {name}: routed after ripping {len(victims)} neighbour items")
+                    ripped_up = ripped_any = True
+            if path is None and allow_rip and rnd < rounds - 2 and "--push" in sys.argv:
+                # last resort (opt-in, can cascade): push through other nets' tracks (costly), rip what the path crosses
+                blocked, vb, soft, vsoft = obstacle_maps(board, grid, name, width, split=True)
+                path = astar(grid, blocked, vb, start, goal, soft=soft, vsoft=vsoft)
+                if path:
+                    pts = {}
+                    for li, i, j in path:
+                        pts.setdefault(OUTER[li], []).append(pcbnew.VECTOR2I(MM(grid.xy(i, j)[0]), MM(grid.xy(i, j)[1])))
+                    vias_at = [pcbnew.VECTOR2I(MM(grid.xy(n[1], n[2])[0]), MM(grid.xy(n[1], n[2])[1]))
+                               for k2, n in enumerate(path[1:]) if n[0] != path[k2][0]]
+                    tr_inf = width / 2 + CLEAR
+                    victims = {}
+                    for t in board.GetTracks():
+                        if t.GetNetname() == name:
+                            continue
+                        isvia = isinstance(t, pcbnew.PCB_VIA)
+                        for l, plist in pts.items():
+                            if not isvia and t.GetLayer() != l:
+                                continue
+                            ps = item_poly(t, l if not isvia else pcbnew.F_Cu, tr_inf + (0 if not isvia else 0))
+                            bb = ps.BBox()
+                            if any(bb.Contains(p) and ps.Contains(p) for p in plist):
+                                victims[t.m_Uuid.AsString()] = t
+                                break
+                        if isvia is False and t.m_Uuid.AsString() not in victims:
+                            for p in vias_at:
+                                if item_poly(t, t.GetLayer(), VIA_D / 2 + CLEAR).Contains(p):
+                                    victims[t.m_Uuid.AsString()] = t
+                                    break
+                    for t in victims.values():
+                        board.Remove(t)
+                    KEEP.extend(victims.values())
+                    print(f"  {name}: pushed through, ripped {len(victims)} items to re-route")
                     ripped_up = ripped_any = True
             if path:
                 emit(board, grid, path, net, width, path_layers)
@@ -537,6 +635,7 @@ def main():
                 failed += 1
                 print(f"  could not route {name}: {da} -> {db}")
         print(f"  routed {routed}, failed {failed}")
+        allow_rip = routed == 0 and failed > 0
         board.Save(pcb)
         set_rules()
     items = drc(pcb)

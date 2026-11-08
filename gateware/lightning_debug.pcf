@@ -40,7 +40,7 @@ set_io exp0         35   # bank 0, G0
 set_io exp1         36
 set_io exp2         37   # bank 0, G1
 set_io exp3         38
-set_io exp4         42
+# exp4: FPGA pin 42 is not connected (it could not be routed out); J5 pin 7 is GND
 set_io exp5         43
 set_io exp6         44   # bank 2 (1.8V), G6
 

@@ -1,0 +1,13 @@
+H1     excluded from BOM in schematic
+H2     excluded from BOM in schematic
+H3     excluded from BOM in schematic
+H4     excluded from BOM in schematic
+J3     Lightning breakout: you fit the eLabGuy board (or 1x8 2.54mm sockets) yourself
+J4     Lightning breakout: you fit the eLabGuy board (or 1x8 2.54mm sockets) yourself
+J5     THT pin header: hand solder (or add it as a THT part in the order)
+JP1    excluded from BOM in schematic
+JP2    excluded from BOM in schematic
+R29    DNP in schematic
+R30    DNP in schematic
+R31    DNP in schematic
+R32    DNP in schematic

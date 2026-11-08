@@ -401,7 +401,7 @@ note("Bank 1 = 3.3V : config SPI, clock, FT2232H ch.B, mux + power control", 350
 place("U7", "FPGA_Lattice:ICE40UP5K-SG48ITR", "ICE40UP5K-SG48ITR", None, FX, 142.24, unit=1, pins={
     "23": "L0A_P_F", "25": "L0A_N_F", "26": "L0B_P_F", "27": "L0B_N_F",
     "28": "L1A_P_F", "31": "L1A_N_F", "32": "L1B_P_F", "34": "L1B_N_F",
-    "35": "EXP0", "36": "EXP1", "37": "EXP2", "38": "EXP3", "42": "EXP4", "43": "EXP5",
+    "35": "EXP0", "36": "EXP1", "37": "EXP2", "38": "EXP3", "42": None, "43": "EXP5",
     "39": "LED_R_K", "40": "LED_G_K", "41": "LED_B_K",
     "33": "VCCIO0",
 })
@@ -542,8 +542,8 @@ place("J4", "lightning_debug:Lightning_Breakout", "APPLE-LM-BO-V2A",
 text("User I/O", 20, 255, 2.5)
 place("J5", "Connector:Conn_01x10_Pin", "EXP", "Connector_PinHeader_2.54mm:PinHeader_1x10_P2.54mm_Vertical",
       30.48, 284.48, {"1": G, "2": "VCCIO0", "3": "EXP0", "4": "EXP1", "5": "EXP2", "6": "EXP3",
-                      "7": "EXP4", "8": "EXP5", "9": "EXP6", "10": "+1V8"},
-      desc="Spare FPGA I/O: EXP0-5 on bank 0 (VCCIO0), EXP6 on bank 2 (1.8V, global clock capable)")
+                      "7": G, "8": "EXP5", "9": "EXP6", "10": "+1V8"},
+      desc="Spare FPGA I/O: EXP0-3,5 on bank 0 (VCCIO0), EXP6 on bank 2 (1.8V, global clock capable). Pin 7 = GND (no EXP4: FPGA pin 42 is not connected, it could not be routed out)")
 place("SW1", "Switch:SW_Push", "USER", "Button_Switch_SMD:SW_SPST_PTS810", 78.74, 269.24,
       {"1": "BTN#", "2": G})
 c = Col(124.46, 264.16)
