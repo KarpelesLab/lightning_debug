@@ -163,7 +163,8 @@ the breakouts' own holes, for standoffs.
         has to be robust at 480 Mb/s, hand-route those lanes as coupled pairs
         on F.Cu or over a reserved GND area.
 - [ ] Verify one breakout footprint 1:1 against the real part (see above).
-- [ ] Fill in the LCSC part numbers in `tools/parts.csv` (see Ordering).
+- [x] LCSC part numbers: every BOM line has one, checked against the JLCPCB
+      parts library (exact MPN, in stock) on 2026-11-09.
 
 ## Ordering (JLCPCB / PCBWay)
 
@@ -189,10 +190,17 @@ PCB options to select:
 - Assembly on the top side only. Every SMD part is on top.
 
 Before you pay:
-- **Part numbers.** Fill `tools/parts.csv`, then re-run the export. JLCPCB uses
-  the `lcsc` column; PCBWay uses `manufacturer`/`mpn`. Only FSUSB42MUX → C11355
-  has been verified. Rows without a number have to be matched by hand in the
-  fab's BOM tool.
+- **Part numbers.** `tools/parts.csv` has an LCSC number (JLCPCB) and
+  manufacturer/MPN (PCBWay) for every BOM line. All were checked against
+  the JLCPCB library on 2026-11-09: exact MPN match, in stock.
+  - The resistors, most capacitors, the ferrite, the 12 MHz crystal, the red
+    LED and the flash are JLCPCB basic parts. The rest are extended parts,
+    which carry a per-part setup fee.
+  - Watch the stock on the FT2232HQ (C193662, about 55 at the time) and the
+    iCE40UP5K. The iCE40 is the tray variant ICE40UP5K-SG48I (C2678152), the
+    same chip as the -SG48ITR reel part named in the schematic.
+  - The status LEDs are the KENTO KT-0603 series, because the usual Everlight
+    0603 LEDs were out of stock.
 - **Rotation.** Check part rotation in the fab's placement preview, especially
   for the QFNs, SOT-23s, SOICs and USB-C connectors. KiCad's zero orientation
   and JLCPCB/PCBWay's don't always agree, and both let you fix it in their viewer.
