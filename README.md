@@ -101,15 +101,25 @@ the breakouts' own holes, for standoffs.
 - Logs: channel B shows up as `/dev/ttyUSB1`. UART runs up to 12 Mbaud, with
   RTS/CTS on BDBUS2/3. For more bandwidth, put channel B in MPSSE mode (SPI-like,
   30 MHz) on the same 4 pins.
-- Pin constraints for nextpnr: `gateware/lightning_debug.pcf`. There's no
-  gateware yet.
+- Pin constraints for nextpnr: `gateware/lightning_debug.pcf`.
+- **Bring-up gateware:** `gateware/selftest.v` (`make -C gateware`, then
+  `make -C gateware prog`). It uses every pin in the `.pcf`:
+  - RGB LED cycles R → G → B.
+  - J5 EXP pins output a slow binary count, so each header pin can be checked.
+  - `/dev/ttyUSB1` at 115200 8N1 is a console. Any key prints a status line
+    (ID lines, L1 and L0 lanes, button, VBUS2, power fault, power and mux
+    state). `p` toggles Lightning power, `a`/`b` cycle mux A/B through
+    off → FPGA → USB-C #2.
+  - Holding the button forces Lightning power off.
+  It builds with yosys + nextpnr-ice40 (or the pip-installable YoWASP builds, see
+  the Makefile): no warnings, 233 LCs, 47 MHz achieved against the 12 MHz clock.
 
 ## PCB
 
 - 80 × 50 mm, 4 layers, 1.6 mm:
   - **F.Cu:** signals.
   - **In1:** solid GND plane, the reference for the USB pairs. Only two short low-speed runs (EXP6, L1A_N_F) use it, kept 1 mm away from the USB nets.
-  - **In2:** +3V3 pour plus signals.
+  - **In2:** +3V3 pour plus signals; a lower-priority GND pour fills what the +3V3 pour can't reach.
   - **B.Cu:** signals plus GND pour.
 - **Rules:** 0.15 mm track, 0.127 mm (5 mil) clearance, 0.5/0.3 mm vias. Power
   nets use 0.5 mm tracks and the USB/L0 nets 0.28 mm. All of this is inside
@@ -123,16 +133,35 @@ the breakouts' own holes, for standoffs.
 - [x] PCB: placed, routed, DRC clean. That means 0 errors, 0 unconnected, and
       the board matches the schematic. The 4 remaining warnings come from the
       stock USB-C footprints' own silkscreen touching the board edge.
-- [x] Checked against the datasheets:
-  - The iCE40 VCCPLL RC filter (100 Ω + 10 µF + 100 nF) is the recommended "RC-based noise filter" (TN1252).
-  - The RGB sink pins are rated 0–3.5 V regardless of VCCIO, so 3.3 V LED anodes are fine with bank 0 at 1.8 V.
-  - VPP_2V5 is on 3.3 V, which the RGB driver and HFOSC need (≥ 2.3 V).
-- [ ] **Review the autorouted USB pairs before ordering.** USB1/USB2 D± and the
-      L0 lanes were autorouted as individual 0.28 mm tracks over the In1 GND
-      plane, not as coupled, length-matched 90 Ω pairs. The runs are short (a few
-      cm), so 480 Mb/s should work, but a hand re-route as real differential
-      pairs is the safe option. Set the `USB_HS` width and gap from your fab's
-      impedance calculator first. 0.28/0.2 mm is an estimate for JLC04161H-7628.
+- [x] Gateware: `gateware/selftest.v` places and routes against the `.pcf`
+      with every pin used, which confirms the pin file fits the SG48 package
+      (banks, global clock input, RGB driver pins).
+- [x] Netlist checked pin by pin against the datasheets:
+  - **iCE40UP5K:** CRESET_B and CDONE have 10 kΩ pull-ups to SPI_VCCIO1 (3.3 V), as the datasheet asks.
+  - **Config flash:** SPI_SO (pin 14) → flash DI, and SPI_SI (pin 17) ← flash DO.
+  - **iceprog wiring:** the FT2232H port A pins match what iceprog expects: ADBUS0 SCK, ADBUS1 MOSI, ADBUS2 MISO, ADBUS4 CS, ADBUS6 CDONE, ADBUS7 CRESET.
+  - **Pin banks:** IOB pins numbered 9 or lower are in bank 2 (1.8 V): button, power fault, VBUS2 detect, ID lines and EXP6. PWR_EN is on IOB_13b, which is bank 1 (3.3 V), and the TPS2065C's EN threshold is up to 2.0 V.
+  - **FT2232H:** internal 1.8 V regulator wired to VCORE; VPHY/VPLL filtered through a ferrite; 12 kΩ 1 % REF resistor; TEST tied to GND; 93LC56B EEPROM with the 2.2 kΩ DO resistor.
+  - **FSUSB42 (MSOP-10):** pinout matches the onsemi datasheet. SEL/OE are driven at 3.3 V (VIH 1.3 V). The defaults are OE high (disconnected) and SEL low (FPGA).
+  - **Regulators, switch, ESD:** AP2112K, TPS2065C (DBV) and USBLC6-2SC6 pinouts match. USB-C CC pins have 5.1 kΩ to GND on both ports.
+  - **VCCPLL:** the 100 Ω + 10 µF + 100 nF RC filter is the recommended "RC-based noise filter" (TN1252).
+  - **RGB sinks:** the pins are rated 0–3.5 V regardless of VCCIO, so 3.3 V LED anodes are fine.
+  - **VPP_2V5:** on 3.3 V, which master SPI configuration needs (≥ 2.3 V).
+- [ ] **Signal integrity of the phone USB passthrough.** The USB2 D± and L0
+      lanes (USB-C #2 → USBLC6 → FSUSB42 → breakout) were autorouted as
+      separate 0.28 mm tracks, not coupled 90 Ω pairs.
+      - The F.Cu parts sit over the solid In1 GND plane.
+      - The parts on In2/B.Cu, about 30 mm per lane on the J3↔J4 legs and
+        the mux → FPGA runs, often have no plane on the adjacent layer, because
+        those two signal layers face each other across 0.2 mm. There the
+        impedance is well above 90 Ω.
+      - `tools/pour_islands.py` already rescues what pour it can with GND vias.
+      - The two install points also leave a ~25 mm open stub on each lane from
+        the unused connector.
+      - FT2232H USB (USB-C #1) is short and fully referenced.
+      - Expect full-speed and probably high-speed to work, but if the phone link
+        has to be robust at 480 Mb/s, hand-route those lanes as coupled pairs
+        on F.Cu or over a reserved GND area.
 - [ ] Verify one breakout footprint 1:1 against the real part (see above).
 - [ ] Fill in the LCSC part numbers in `tools/parts.csv` (see Ordering).
 
@@ -182,6 +211,7 @@ kicad-cli sch export netlist --format kicadxml -o /tmp/net.xml lightning_debug.k
 python3 tools/gen_pcb.py /tmp/net.xml        # WARNING: overwrites the PCB (placement, no tracks)
 python3 tools/autoroute.py                   # Freerouting, headless
 python3 tools/finish_route.py                # rip-up/re-route what is left, GND stitching
+python3 tools/pour_islands.py                # In2 GND fill + GND vias so pour islands survive
 python3 tools/silk.py                        # place reference designators
 ```
 
@@ -191,7 +221,7 @@ python3 tools/silk.py                        # place reference designators
   runtime for 2.5+ (or set `FREEROUTING_JAR` / `FREEROUTING_JAVA`).
 - `finish_route.py` is a small grid A* router built on KiCad's own geometry. It:
   - takes the autorouter's open connections from KiCad's DRC report;
-  - keeps In1 free of tracks;
+  - keeps In1 free of tracks, except as a last resort for low-speed nets, 1 mm from the USB nets;
   - rips up neighbours only when plain routing makes no progress.
 - The autorouter results depend on placement. The committed board comes from
   several placement variants (`PCB_U7`/`PCB_MARGIN` knobs in `gen_pcb.py`). The
