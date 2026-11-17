@@ -137,7 +137,11 @@ the breakouts' own holes, for standoffs.
 - **FPGA:** it boots the self-test from flash (CDONE high after 67 ms).
 - **Console:** the channel B UART works in both directions.
 - **Mux controls:** they respond. Power-fault and VBUS2 read idle.
-- **Open:** side B ID lines read 0.
+- **Button and LEDs:** the button reads correctly, and the RGB LED cycles R → G → B.
+- **Lightning power:** with an iPhone attached, the TPS2065C switches on and
+  stays on with no fault.
+- **ID lines:** with the iPhone attached, side A IDs read 1 and side B IDs
+  read 0. The status line samples too slowly to see the ID protocol itself.
 
 - [x] Schematic: ERC clean (0 errors, 0 warnings).
 - [x] PCB: placed, routed, DRC clean. That means 0 errors, 0 unconnected, and
