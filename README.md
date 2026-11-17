@@ -138,8 +138,11 @@ the breakouts' own holes, for standoffs.
 - **Console:** the channel B UART works in both directions.
 - **Mux controls:** they respond. Power-fault and VBUS2 read idle.
 - **Button and LEDs:** the button reads correctly, and the RGB LED cycles R → G → B.
-- **Lightning power:** with an iPhone attached, the TPS2065C switches on and
-  stays on with no fault.
+- **Lightning power:** with an iPhone attached and a source on USB-C #2
+  (JP1 default), the TPS2065C switches on and stays on with no fault. The
+  yellow LTG PWR LED lights, and the iPhone powers up. Without a source on
+  USB-C #2, the switch sits in UVLO and reports no fault, so check VBUS2
+  detect first.
 - **ID lines:** with the iPhone attached, side A IDs read 1 and side B IDs
   read 0. The status line samples too slowly to see the ID protocol itself.
 
