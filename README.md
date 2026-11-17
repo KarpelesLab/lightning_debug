@@ -160,9 +160,10 @@ ID: `make -C gateware TOP=idresp RESP=7520001000000092`.
   edges were clean: median timing error 0.003 bit, no glitches. The 7 framing
   errors in 7.4 KB come from the line going low around the phone's
   reset/boot.
-- **The UART's voltage is not known yet.** A clean read at the 3.3 V bank's
-  thresholds rules out neither 1.8 V nor 3.3 V. Measure the idle-high level on
-  the breakout's L1+ pin before the FPGA ever drives these lanes.
+- **The UART runs at 3.0 V.** Measured on an iPhone SE 3: the idle-high on B_L1P
+  (breakout pin 10) is 3.0 V. JP2's default 3.3 V bank receives it cleanly
+  (VIH 2.0 V). To transmit to the phone, drive open-drain (pull low only, let the
+  phone supply the high) rather than push-pull 3.3 V into a 3.0 V input.
 
 **Over USB (syslog relay).**
 
