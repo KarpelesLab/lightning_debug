@@ -140,9 +140,27 @@ Gateware in `gateware/` (build any of them with `make TOP=<name>`):
 |--------|--------------|
 | `selftest.v` | bring-up console (see Software) |
 | `idcap.v` | streams every edge on the 4 ID lines and 4 L1 lanes at 12 Mbaud on ttyUSB1. Read it with `idcap.py [secs] --raw f.bin`, decode with `sdq.py f.bin B_ID0` |
+| `uartdec.py` | decodes 8N1 UART from an `idcap` raw capture: `uartdec.py f.bin L1B_P 115200` |
 | `idresp.v` | `idcap.v` plus a cable-ID responder on all 4 ID lines. It routes the side that answered to USB-C #2. LED: green = power on, blue = replied |
 
 ## Reading the phone's logs
+
+**Over Lightning (DCSD serial).** Build the responder with the debug-serial
+ID: `make -C gateware TOP=idresp RESP=7520001000000092`.
+
+- After a replug (a reflash alone doesn't make the phone re-identify), the
+  phone accepts the ID. It puts its debug UART on L1+ of the active side at
+  115200 8N1, and it also brings up USB on L0.
+- On a reboot, iBoot prints its banner (board d49ap, build tag, ECID/serial)
+  and about 7 KB of trace points. Capture with `idcap.py 90 --raw f.bin` and
+  decode with `uartdec.py f.bin L1B_P`.
+- Output stops at `End of iBoot serial output`. A retail iOS kernel doesn't log
+  to serial without boot-args.
+- Tested on an iPhone SE 3 (iOS 26.5.2) with JP2 at 3.3 V, listen-only:
+  7 framing errors in 7.4 KB. Put JP2 at 1.8 V before transmitting to the
+  phone.
+
+**Over USB (syslog relay).**
 
 With `idresp.v` loaded, the phone shows up on USB-C #2 like it would on an Apple
 cable, so the libimobiledevice tools work. If the system usbmuxd is running, plain

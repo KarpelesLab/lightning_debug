@@ -6,11 +6,13 @@ YOSYS   ?= yosys
 NEXTPNR ?= nextpnr-ice40
 ICEPACK ?= icepack
 ICEPROG ?= iceprog
+# idresp.v reply override, e.g. RESP=7520001000000092 (DCSD serial); default = USB cable ID
+RESP    ?=
 
 all: $(TOP).bin
 
 $(TOP).json: $(TOP).v
-	$(YOSYS) -q -p "synth_ice40 -top $(TOP) -json $@" $<
+	$(YOSYS) -q -p "read_verilog $<; $(if $(RESP),chparam -set RESP 64'h$(RESP) $(TOP);) synth_ice40 -top $(TOP) -json $@"
 
 $(TOP).asc: $(TOP).json lightning_debug.pcf
 	$(NEXTPNR) -q --up5k --package sg48 --freq 12 --pcf lightning_debug.pcf --json $< --asc $@ --report $(TOP).report.json
