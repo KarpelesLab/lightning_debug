@@ -156,9 +156,13 @@ ID: `make -C gateware TOP=idresp RESP=7520001000000092`.
   decode with `uartdec.py f.bin L1B_P`.
 - Output stops at `End of iBoot serial output`. A retail iOS kernel doesn't log
   to serial without boot-args.
-- Tested on an iPhone SE 3 (iOS 26.5.2) with JP2 at 3.3 V, listen-only:
-  7 framing errors in 7.4 KB. Put JP2 at 1.8 V before transmitting to the
-  phone.
+- Tested on an iPhone SE 3 (iOS 26.5.2) with JP2 at 3.3 V, listen-only. The
+  edges were clean: median timing error 0.003 bit, no glitches. The 7 framing
+  errors in 7.4 KB come from the line going low around the phone's
+  reset/boot.
+- **The UART's voltage is not known yet.** A clean read at the 3.3 V bank's
+  thresholds rules out neither 1.8 V nor 3.3 V. Measure the idle-high level on
+  the breakout's L1+ pin before the FPGA ever drives these lanes.
 
 **Over USB (syslog relay).**
 
