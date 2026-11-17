@@ -142,6 +142,29 @@ Gateware in `gateware/` (build any of them with `make TOP=<name>`):
 | `idcap.v` | streams every edge on the 4 ID lines and 4 L1 lanes at 12 Mbaud on ttyUSB1. Read it with `idcap.py [secs] --raw f.bin`, decode with `sdq.py f.bin B_ID0` |
 | `idresp.v` | `idcap.v` plus a cable-ID responder on all 4 ID lines. It routes the side that answered to USB-C #2. LED: green = power on, blue = replied |
 
+## Reading the phone's logs
+
+With `idresp.v` loaded, the phone shows up on USB-C #2 like it would on an Apple
+cable, so the libimobiledevice tools work. If the system usbmuxd is running, plain
+`idevicesyslog` is enough.
+
+Without root, build usbmuxd from git (it has `--config-dir`) and run it as a
+normal user:
+
+```
+export USBMUXD_SOCKET_ADDRESS=UNIX:/run/user/$(id -u)/usbmuxd.sock   # path < 108 chars
+usbmuxd -f -v -S /run/user/$(id -u)/usbmuxd.sock -P NONE -C ~/.cache/lockdown &
+ideviceinfo -s          # iPhone14,6, iOS 26.5.2 on the first test
+idevicesyslog
+```
+
+- **Pairing:** a phone on the welcome screen pairs without a Trust prompt.
+- **The environment variable matters for usbmuxd too:** its pairing preflight
+  connects back through libimobiledevice. Without it, the phone never appears
+  to clients (lockdown error -8).
+- **Tested** on the first board: about 100 log lines/s stream live over the
+  passthrough.
+
 ## PCB
 
 - 80 × 50 mm, 4 layers, 1.6 mm:
