@@ -18,7 +18,7 @@ $(TOP).asc: $(TOP).json lightning_debug.pcf
 $(TOP).bin: $(TOP).asc
 	$(ICEPACK) $< $@
 
-prog: $(TOP).bin
+prog: $(TOP).bin  # or: python3 flash.py $(TOP).bin (pyftdi, no iceprog needed)
 	$(ICEPROG) $<
 
 clean:

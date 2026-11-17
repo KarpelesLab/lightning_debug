@@ -111,6 +111,8 @@ the breakouts' own holes, for standoffs.
     state). `p` toggles Lightning power, `a`/`b` cycle mux A/B through
     off → FPGA → USB-C #2.
   - Holding the button forces Lightning power off.
+  Without iceprog: `python3 gateware/flash.py gateware/selftest.bin` (pyftdi)
+  writes, verifies and boots it; `python3 gateware/console.py s` talks to the console.
   It builds with yosys + nextpnr-ice40 (or the pip-installable YoWASP builds, see
   the Makefile): no warnings, 233 LCs, 47 MHz achieved against the 12 MHz clock.
 
@@ -128,6 +130,14 @@ the breakouts' own holes, for standoffs.
   GND stitching vias across the board.
 
 ## Status
+
+**First board (2026-11-17):**
+- **USB:** the FT2232H enumerates at high speed as 0403:6010, with ttyUSB0 and ttyUSB1.
+- **Flash:** the W25Q128 answers with ID EF 40 18.
+- **FPGA:** it boots the self-test from flash (CDONE high after 67 ms).
+- **Console:** the channel B UART works in both directions.
+- **Mux controls:** they respond. Power-fault and VBUS2 read idle.
+- **Open:** side B ID lines read 0.
 
 - [x] Schematic: ERC clean (0 errors, 0 warnings).
 - [x] PCB: placed, routed, DRC clean. That means 0 errors, 0 unconnected, and
