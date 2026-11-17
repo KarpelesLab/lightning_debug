@@ -116,6 +116,32 @@ the breakouts' own holes, for standoffs.
   It builds with yosys + nextpnr-ice40 (or the pip-installable YoWASP builds, see
   the Makefile): no warnings, 233 LCs, 47 MHz achieved against the 12 MHz clock.
 
+## Lightning ID protocol (as observed)
+
+Captured with `gateware/idcap.v` and decoded with `gateware/sdq.py`. The phone is
+the host on its ID pin. An external 10 kΩ pulls the line up to 1.8 V, and both
+sides drive it open-drain.
+
+- **Bits:** each bit is a low pulse on a 10.08 µs period, sent LSB first.
+  1 = 1.67 µs low, 0 = 6.92 µs low. Each byte is followed by 15.67 µs high.
+- **Transactions:** each one starts with a ~13.8 µs low break.
+- **Before Lightning power is on:** the phone sends `72 71` every ~100 ms.
+- **With power on:** the phone sends `74 18 09 a5` on ID0 and
+  `74 98 09 8a` on ID1, alternating between the two pins. After each request
+  it sends another break, and the accessory replies after that break.
+- **Checksum:** the last byte is CRC-8/Maxim with initial value 0xFF.
+- **The reply that works:** `idresp.v` sends `75 10 0c 00 00 00 00 66`
+  (the Lightning-to-USB cable ID), with the same bit timing, starting 8 µs
+  after that break. The phone then connects USB on the L0 pair of that side.
+
+Gateware in `gateware/` (build any of them with `make TOP=<name>`):
+
+| Design | What it does |
+|--------|--------------|
+| `selftest.v` | bring-up console (see Software) |
+| `idcap.v` | streams every edge on the 4 ID lines and 4 L1 lanes at 12 Mbaud on ttyUSB1. Read it with `idcap.py [secs] --raw f.bin`, decode with `sdq.py f.bin B_ID0` |
+| `idresp.v` | `idcap.v` plus a cable-ID responder on all 4 ID lines. It routes the side that answered to USB-C #2. LED: green = power on, blue = replied |
+
 ## PCB
 
 - 80 × 50 mm, 4 layers, 1.6 mm:
@@ -143,8 +169,12 @@ the breakouts' own holes, for standoffs.
   yellow LTG PWR LED lights, and the iPhone powers up. Without a source on
   USB-C #2, the switch sits in UVLO and reports no fault, so check VBUS2
   detect first.
-- **ID lines:** with the iPhone attached, side A IDs read 1 and side B IDs
-  read 0. The status line samples too slowly to see the ID protocol itself.
+- **USB passthrough works:** with `gateware/idresp.v` answering the
+  phone's ID request as a Lightning-to-USB cable, an iPhone (freshly reset, on
+  the welcome screen) enumerated on the computer through USB-C #2, the
+  FSUSB42 and the breakout. It came up high-speed (480 Mb/s) as `05ac:12a8`,
+  all four configurations read cleanly, and it re-enumerated after a replug.
+  No long bulk transfer has been tested yet.
 
 - [x] Schematic: ERC clean (0 errors, 0 warnings).
 - [x] PCB: placed, routed, DRC clean. That means 0 errors, 0 unconnected, and
@@ -164,7 +194,9 @@ the breakouts' own holes, for standoffs.
   - **VCCPLL:** the 100 Ω + 10 µF + 100 nF RC filter is the recommended "RC-based noise filter" (TN1252).
   - **RGB sinks:** the pins are rated 0–3.5 V regardless of VCCIO, so 3.3 V LED anodes are fine.
   - **VPP_2V5:** on 3.3 V, which master SPI configuration needs (≥ 2.3 V).
-- [ ] **Signal integrity of the phone USB passthrough.** The USB2 D± and L0
+- [ ] **Signal integrity of the phone USB passthrough.** On the first board it
+      enumerates fine at 480 Mb/s (see above). The margin is unmeasured, and
+      what follows still applies to a future revision. The USB2 D± and L0
       lanes (USB-C #2 → USBLC6 → FSUSB42 → breakout) were autorouted as
       separate 0.28 mm tracks, not coupled 90 Ω pairs.
       - The F.Cu parts sit over the solid In1 GND plane.
